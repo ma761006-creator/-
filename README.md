@@ -24,7 +24,31 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-互動式文件（Swagger UI）：<http://127.0.0.1:8000/docs>
+- 網頁介面：<http://127.0.0.1:8000/>
+- 互動式文件（Swagger UI）：<http://127.0.0.1:8000/docs>
+
+## 網頁介面
+
+`static/index.html` 是一頁式的操作介面：上方共用病人基本資料（並即時顯示 TBW 與其係數依據），
+下方三個分頁分別對應三個端點，輸入即時運算，結果含分類、鑑別診斷、待補檢驗、建議處置與安全警示；
+輸液計算另有一條量尺，把每公升的 ΔNa 對照 24 小時 8 mEq/L 的校正上限。
+
+判讀邏輯由 `static/sodium-engine.js` 在瀏覽器端執行，**不呼叫後端**，因此這個頁面也可以直接用
+瀏覽器開啟 `static/index.html` 單機使用，數值不離開該裝置、也不寫入任何儲存空間。
+
+這代表同一套臨床邏輯有 Python 與 JavaScript 兩份實作。兩者由
+`tests/test_web_parity.py` 對拍把關：同一批輸入（約 1.8 萬組）同時餵給兩邊逐欄位比對，
+另外也比對 JS 的輸入邊界表與 OpenAPI schema 的 `Field(...)` 約束、以及輸液濃度表與 enum。
+**修改任一邊的閾值、分支或文字時請同步另一邊**，否則測試會失敗。
+
+### 產生 Claude Artifact 版本
+
+```bash
+python tools/build_artifact.py artifact-page.html
+```
+
+Artifact 發佈時會自行包上 `<!doctype>`/`<html>`/`<head>`/`<body>`，腳本依 `index.html` 裡的
+`ARTIFACT:HEAD` / `ARTIFACT:BODY` 標記切出可發佈的片段，發佈時一併帶上 `sodium-engine.js`。
 
 ## 端點
 
@@ -106,6 +130,8 @@ curl -X POST http://127.0.0.1:8000/api/v1/differential/hypernatremia \
 pip install -r requirements-dev.txt
 python -m pytest
 ```
+
+對拍測試需要 `node`；環境中沒有 node 時該檔會自動跳過（其餘測試照常執行）。
 
 ## 輸入邊界（防呆）
 

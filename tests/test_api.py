@@ -370,3 +370,21 @@ def test_openapi_schema_builds():
     r = client.get("/openapi.json")
     assert r.status_code == 200
     assert HYPO_URL in r.json()["paths"]
+
+
+def test_root_serves_the_web_ui():
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert "血鈉鑑別決策台" in r.text
+
+
+def test_engine_script_is_served():
+    r = client.get("/sodium-engine.js")
+    assert r.status_code == 200
+    assert "evaluateHyponatremia" in r.text
+
+
+def test_static_mount_does_not_shadow_the_api():
+    assert client.get("/health").json()["status"] == "ok"
+    assert client.get("/openapi.json").status_code == 200

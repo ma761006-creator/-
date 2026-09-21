@@ -1,7 +1,9 @@
 from enum import Enum
+from pathlib import Path
 from typing import Optional, List
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
 app = FastAPI(
@@ -414,3 +416,14 @@ def calculate_adrogue_madias(req: InfusionCalculationRequest):
         delta_na_per_liter=delta_na,
         clinical_note=note,
     )
+
+
+# --------------------------------------------------------------------------
+# 網頁介面
+# --------------------------------------------------------------------------
+# 掛載在最後，讓上面宣告的 API 路由與 /docs 優先比對；其餘路徑才交給靜態檔案。
+# 網頁本身以 static/sodium-engine.js 在瀏覽器端運算，不需呼叫下列端點，
+# 兩份實作由 tests/test_web_parity.py 對拍確保一致。
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+if STATIC_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="web")
