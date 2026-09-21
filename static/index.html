@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- ARTIFACT:HEAD -->
+<title>血鈉鑑別決策台</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,500;1,400&display=swap">
+<style>
+  :root {
+    color-scheme: light dark;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+
+    --ground: #f5f7f5;
+    --surface: #ffffff;
+    --surface-2: #edf1ee;
+    --ink: #131b18;
+    --ink-2: #47564f;
+    --muted: #6d7c76;
+    --line: #dbe2dd;
+    --line-strong: #c1cbc5;
+    --accent: #14594f;
+    --accent-ink: #0e463e;
+    --accent-soft: #e0efeb;
+    --ok: #2c6b4d;
+    --ok-soft: #e4f0e8;
+    --warn: #8a5010;
+    --warn-soft: #f9efe1;
+    --crit: #9b2c22;
+    --crit-soft: #fbeae7;
+    --shadow: 0 1px 2px rgba(19, 27, 24, .05), 0 6px 18px -12px rgba(19, 27, 24, .22);
+
+    --sans: "IBM Plex Sans", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    --serif: "IBM Plex Serif", Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0d1311;
+      --surface: #151e1b;
+      --surface-2: #1d2a26;
+      --ink: #e7eeea;
+      --ink-2: #b3c1bb;
+      --muted: #8a9a94;
+      --line: #26332f;
+      --line-strong: #364540;
+      --accent: #63cdb4;
+      --accent-ink: #8fdcc8;
+      --accent-soft: #15302b;
+      --ok: #74c199;
+      --ok-soft: #16281f;
+      --warn: #dfa462;
+      --warn-soft: #2d2317;
+      --crit: #eb9184;
+      --crit-soft: #331e1b;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 18px -12px rgba(0, 0, 0, .6);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0d1311;
+    --surface: #151e1b;
+    --surface-2: #1d2a26;
+    --ink: #e7eeea;
+    --ink-2: #b3c1bb;
+    --muted: #8a9a94;
+    --line: #26332f;
+    --line-strong: #364540;
+    --accent: #63cdb4;
+    --accent-ink: #8fdcc8;
+    --accent-soft: #15302b;
+    --ok: #74c199;
+    --ok-soft: #16281f;
+    --warn: #dfa462;
+    --warn-soft: #2d2317;
+    --crit: #eb9184;
+    --crit-soft: #331e1b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 18px -12px rgba(0, 0, 0, .6);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  img { max-width: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 400 15px/1.6 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .eyebrow {
+    font: 500 10.5px/1 var(--mono);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ---------------- header ---------------- */
+  .masthead {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 20;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .masthead-inner {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 12px 16px;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+  }
+  .wordmark {
+    margin: 0;
+    font: 600 19px/1.2 var(--sans);
+    letter-spacing: .01em;
+  }
+  .wordmark-latin {
+    font: italic 400 13px/1.2 var(--serif);
+    color: var(--muted);
+  }
+  .use-note {
+    margin-left: auto;
+    font: 400 11.5px/1.4 var(--sans);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px 10px;
+  }
+
+  main {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding-inline: 16px;
+    padding-block: 20px 40px;
+  }
+
+  /* ---------------- patient strip ---------------- */
+  .patient {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    box-shadow: var(--shadow);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+    gap: 14px 18px;
+    align-items: end;
+  }
+  .tbw-readout {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    justify-self: start;
+  }
+  .tbw-readout .value {
+    font: 500 22px/1 var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--accent-ink);
+  }
+  .tbw-readout .value small {
+    font-size: 12px;
+    color: var(--muted);
+    margin-left: 3px;
+  }
+  .tbw-readout .sub { font-size: 11.5px; color: var(--muted); }
+
+  /* ---------------- tabs ---------------- */
+  .tabs {
+    display: flex;
+    gap: 2px;
+    margin: 22px 0 0;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    appearance: none;
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    padding: 9px 14px;
+    font: 500 14px/1.4 var(--sans);
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--ink-2); }
+  .tab[aria-selected="true"] {
+    color: var(--accent-ink);
+    border-bottom-color: var(--accent);
+  }
+
+  /* ---------------- layout ---------------- */
+  .workbench {
+    display: grid;
+    grid-template-columns: minmax(300px, 380px) 1fr;
+    gap: 24px;
+    margin-top: 22px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .workbench { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+  }
+  .panel-head {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .panel-body { padding: 16px; display: grid; gap: 16px; }
+
+  .ghost-btn {
+    appearance: none;
+    background: none;
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    color: var(--ink-2);
+    font: 500 12px/1 var(--sans);
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  .ghost-btn:hover { border-color: var(--accent); color: var(--accent-ink); }
+  .panel-head .ghost-btn { margin-left: auto; }
+
+  /* ---------------- fields ---------------- */
+  .field { display: grid; gap: 5px; min-width: 0; }
+  .field > label, .fieldset-label {
+    font: 500 12.5px/1.3 var(--sans);
+    color: var(--ink-2);
+  }
+  .field .unit { color: var(--muted); font-weight: 400; }
+  .input-wrap { position: relative; display: flex; }
+  input[type="number"], select {
+    width: 100%;
+    min-width: 0;
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--line-strong);
+    border-radius: 7px;
+    padding: 8px 10px;
+    font: 400 14.5px/1.3 var(--mono);
+    font-variant-numeric: tabular-nums;
+  }
+  select { font-family: var(--sans); }
+  input[type="number"]:focus-visible, select:focus-visible, .tab:focus-visible,
+  .ghost-btn:focus-visible, .seg label:focus-within {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  input.invalid { border-color: var(--crit); }
+  .hint { font: 400 11.5px/1.4 var(--sans); color: var(--muted); }
+  .hint.error { color: var(--crit); }
+
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 360px) { .row-2 { grid-template-columns: 1fr; } }
+
+  .seg { display: flex; gap: 0; border: 1px solid var(--line-strong); border-radius: 7px; overflow: hidden; }
+  .seg label {
+    flex: 1;
+    text-align: center;
+    padding: 7px 6px;
+    font: 500 12.5px/1.3 var(--sans);
+    color: var(--ink-2);
+    cursor: pointer;
+    background: var(--surface);
+    border-right: 1px solid var(--line);
+  }
+  .seg label:last-child { border-right: 0; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label:has(input:checked) { background: var(--accent-soft); color: var(--accent-ink); }
+  .seg-sm label { font-size: 12px; padding: 6px 4px; }
+
+  /* ---------------- results ---------------- */
+  .verdict { padding: 18px 20px 16px; border-bottom: 1px solid var(--line); }
+  .verdict h2 {
+    margin: 7px 0 0;
+    font: 600 20px/1.35 var(--sans);
+    text-wrap: balance;
+  }
+  .verdict .latin {
+    display: block;
+    font: italic 400 14px/1.4 var(--serif);
+    color: var(--muted);
+    margin-top: 3px;
+  }
+
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+  }
+  .tile {
+    padding: 13px 16px;
+    display: grid;
+    gap: 5px;
+    border-left: 1px solid var(--line);
+  }
+  .tile:first-child { border-left: 0; }
+  @media (max-width: 560px) {
+    .tiles { grid-template-columns: 1fr; }
+    .tile { border-left: 0; border-top: 1px solid var(--line); }
+    .tile:first-child { border-top: 0; }
+  }
+  .tile .value {
+    font: 500 21px/1 var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  .tile .value small { font-size: 11.5px; color: var(--muted); margin-left: 3px; letter-spacing: 0; }
+  .tile .note { font: 400 11.5px/1.4 var(--sans); color: var(--muted); }
+
+  .section { padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  .section:last-child { border-bottom: 0; }
+  .section h3 { margin: 0 0 10px; }
+  .stack { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .stack li {
+    display: grid;
+    grid-template-columns: 14px 1fr;
+    gap: 10px;
+    font-size: 14.5px;
+    line-height: 1.65;
+    color: var(--ink);
+  }
+  .stack li::before {
+    content: "";
+    width: 14px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    margin-top: 11px;
+  }
+  .stack.pending li::before { background: var(--line-strong); }
+  .stack.pending li { color: var(--ink-2); }
+
+  .alert {
+    margin: 16px 20px 20px;
+    background: var(--warn-soft);
+    border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent);
+    border-left: 3px solid var(--warn);
+    border-radius: 7px;
+    padding: 12px 14px;
+    display: grid;
+    gap: 6px;
+  }
+  .alert .eyebrow { color: var(--warn); }
+  .alert p { margin: 0; font-size: 13.5px; line-height: 1.65; color: var(--ink); }
+
+  .errors { padding: 18px 20px; display: grid; gap: 10px; }
+  .errors h2 { margin: 0; font: 600 16px/1.4 var(--sans); color: var(--crit); }
+  .errors ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13.5px; color: var(--ink-2); }
+
+  /* ---------------- ceiling meter ---------------- */
+  .meter { display: grid; gap: 9px; }
+  .meter-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    padding: 3px 10px 3px 8px;
+    font: 500 12px/1.5 var(--sans);
+  }
+  .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .status-ok { background: var(--ok-soft); color: var(--ok); }
+  .status-ok .dot { background: var(--ok); }
+  .status-warn { background: var(--warn-soft); color: var(--warn); }
+  .status-warn .dot { background: var(--warn); }
+  .status-crit { background: var(--crit-soft); color: var(--crit); }
+  .status-crit .dot { background: var(--crit); }
+
+  .track {
+    position: relative;
+    height: 10px;
+    background: var(--surface-2);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .track .fill {
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    border-radius: 0 4px 4px 0;
+    background: var(--accent);
+    transition: width .18s ease;
+  }
+  .track .fill.is-warn { background: var(--warn); }
+  .track .fill.is-crit { background: var(--crit); }
+  .track .ceiling {
+    position: absolute;
+    inset-block: 0;
+    width: 2px;
+    background: var(--surface);
+    box-shadow: 0 0 0 1px var(--ink-2);
+  }
+  .meter-scale {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    font: 400 11px/1.3 var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+  .meter-scale .at-ceiling {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    color: var(--ink-2);
+  }
+
+  .colophon {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 0 16px 36px;
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+  .colophon strong { color: var(--ink-2); font-weight: 500; }
+  .colophon code {
+    font: 400 11.5px/1 var(--mono);
+    background: var(--surface-2);
+    border-radius: 4px;
+    padding: 2px 5px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+<!-- /ARTIFACT:HEAD -->
+</head>
+<body>
+<!-- ARTIFACT:BODY -->
+<header class="masthead">
+  <div class="masthead-inner">
+    <h1 class="wordmark">血鈉鑑別決策台</h1>
+    <span class="wordmark-latin">Sodium Differential &amp; Management</span>
+    <span class="use-note">臨床決策輔助，非處方</span>
+  </div>
+</header>
+
+<main>
+  <section class="patient" aria-label="病人基本資料">
+    <div class="field">
+      <label for="age">年齡 <span class="unit">歲</span></label>
+      <input type="number" id="age" value="72" min="0" max="130" step="1" inputmode="numeric">
+      <p class="hint" id="age-hint">0–130</p>
+    </div>
+    <div class="field">
+      <label for="gender">生理性別</label>
+      <select id="gender">
+        <option value="female" selected>女性</option>
+        <option value="male">男性</option>
+      </select>
+      <p class="hint">決定 TBW 係數</p>
+    </div>
+    <div class="field">
+      <label for="weight">體重 <span class="unit">kg</span></label>
+      <input type="number" id="weight" value="52" min="0.1" max="300" step="0.1" inputmode="decimal">
+      <p class="hint" id="weight-hint">0–300</p>
+    </div>
+    <div class="tbw-readout">
+      <span class="eyebrow">全身體液量 TBW</span>
+      <span class="value" id="tbw-value">—<small>L</small></span>
+      <span class="sub" id="tbw-basis">—</span>
+    </div>
+  </section>
+
+  <div class="tabs" role="tablist" aria-label="計算模式">
+    <button class="tab" role="tab" id="tab-hypo" aria-controls="form-hypo" aria-selected="true" data-mode="hypo">低血鈉鑑別</button>
+    <button class="tab" role="tab" id="tab-hyper" aria-controls="form-hyper" aria-selected="false" data-mode="hyper">高血鈉鑑別</button>
+    <button class="tab" role="tab" id="tab-calc" aria-controls="form-calc" aria-selected="false" data-mode="calc">輸液計算</button>
+  </div>
+
+  <div class="workbench">
+    <!-- ------------------ inputs ------------------ -->
+    <form class="panel" id="inputs" autocomplete="off">
+      <div class="panel-head">
+        <span class="eyebrow">檢驗數值</span>
+        <button type="button" class="ghost-btn" id="reset-btn">載入範例</button>
+      </div>
+
+      <!-- 低血鈉 -->
+      <div class="panel-body" id="form-hypo" role="tabpanel" aria-labelledby="tab-hypo">
+        <div class="row-2">
+          <div class="field">
+            <label for="hypo-na">血鈉 <span class="unit">mEq/L</span></label>
+            <input type="number" id="hypo-na" value="121" step="0.1" inputmode="decimal">
+            <p class="hint" id="hypo-na-hint">80–134.9</p>
+          </div>
+          <div class="field">
+            <label for="hypo-glucose">血糖 <span class="unit">mg/dL</span></label>
+            <input type="number" id="hypo-glucose" value="110" step="1" inputmode="decimal">
+            <p class="hint" id="hypo-glucose-hint">10–2500</p>
+          </div>
+        </div>
+        <div class="field">
+          <label for="hypo-posm">血漿滲透壓 P<sub>osm</sub> <span class="unit">mOsm/kg</span></label>
+          <input type="number" id="hypo-posm" value="252" step="0.1" inputmode="decimal">
+          <p class="hint" id="hypo-posm-hint">150–400；&lt;275 低張、275–295 等張、&gt;295 高張</p>
+        </div>
+        <div class="field">
+          <span class="fieldset-label" id="hypo-vol-label">細胞外液容積狀態</span>
+          <div class="seg" role="radiogroup" aria-labelledby="hypo-vol-label">
+            <label><input type="radio" name="hypo-vol" value="hypovolemic">低容積</label>
+            <label><input type="radio" name="hypo-vol" value="euvolemic" checked>正常</label>
+            <label><input type="radio" name="hypo-vol" value="hypervolemic">高容積</label>
+          </div>
+          <p class="hint">脫水低血壓／無水腫無脫水／水腫腹水 JVD</p>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <label for="hypo-una">尿鈉 U<sub>Na</sub> <span class="unit">mEq/L</span></label>
+            <input type="number" id="hypo-una" value="56" step="0.1" inputmode="decimal">
+            <p class="hint" id="hypo-una-hint">可留空；0–300</p>
+          </div>
+          <div class="field">
+            <label for="hypo-uosm">尿滲透壓 U<sub>osm</sub> <span class="unit">mOsm/kg</span></label>
+            <input type="number" id="hypo-uosm" value="410" step="1" inputmode="decimal">
+            <p class="hint" id="hypo-uosm-hint">可留空；0–1500</p>
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="field">
+            <span class="fieldset-label" id="tsh-label">甲狀腺 TSH/FT4</span>
+            <div class="seg seg-sm" role="radiogroup" aria-labelledby="tsh-label">
+              <label><input type="radio" name="tsh" value="1" checked>正常</label>
+              <label><input type="radio" name="tsh" value="0">異常</label>
+            </div>
+          </div>
+          <div class="field">
+            <span class="fieldset-label" id="cort-label">晨間 Cortisol</span>
+            <div class="seg seg-sm" role="radiogroup" aria-labelledby="cort-label">
+              <label><input type="radio" name="cort" value="1" checked>正常</label>
+              <label><input type="radio" name="cort" value="0">異常</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 高血鈉 -->
+      <div class="panel-body" id="form-hyper" role="tabpanel" aria-labelledby="tab-hyper" hidden>
+        <div class="field">
+          <label for="hyper-na">血鈉 <span class="unit">mEq/L</span></label>
+          <input type="number" id="hyper-na" value="154" step="0.1" inputmode="decimal">
+          <p class="hint" id="hyper-na-hint">145.1–200</p>
+        </div>
+        <div class="field">
+          <span class="fieldset-label" id="hyper-vol-label">細胞外液容積狀態</span>
+          <div class="seg" role="radiogroup" aria-labelledby="hyper-vol-label">
+            <label><input type="radio" name="hyper-vol" value="hypovolemic">低容積</label>
+            <label><input type="radio" name="hyper-vol" value="euvolemic" checked>正常</label>
+            <label><input type="radio" name="hyper-vol" value="hypervolemic">高容積</label>
+          </div>
+        </div>
+        <div class="field">
+          <label for="hyper-uosm">尿滲透壓 U<sub>osm</sub> <span class="unit">mOsm/kg</span></label>
+          <input type="number" id="hyper-uosm" value="150" step="1" inputmode="decimal">
+          <p class="hint" id="hyper-uosm-hint">可留空；&lt;300 未濃縮、&gt;600 濃縮正常</p>
+        </div>
+        <div class="field">
+          <label for="hyper-ddavp">DDAVP 後尿滲透壓 <span class="unit">mOsm/kg</span></label>
+          <input type="number" id="hyper-ddavp" value="520" step="1" inputmode="decimal">
+          <p class="hint" id="hyper-ddavp-hint">可留空；上升 ≥ 50% 判為 Central DI</p>
+        </div>
+      </div>
+
+      <!-- 輸液計算 -->
+      <div class="panel-body" id="form-calc" role="tabpanel" aria-labelledby="tab-calc" hidden>
+        <div class="field">
+          <label for="calc-na">當前血鈉 <span class="unit">mEq/L</span></label>
+          <input type="number" id="calc-na" value="118" step="0.1" inputmode="decimal">
+          <p class="hint" id="calc-na-hint">80–200</p>
+        </div>
+        <div class="field">
+          <label for="calc-infusate">輸液種類</label>
+          <select id="calc-infusate">
+            <option value="D5W">D5W（Na 0）</option>
+            <option value="0.45% NaCl">0.45% NaCl（Na 77）</option>
+            <option value="0.9% NaCl">0.9% NaCl（Na 154）</option>
+            <option value="3% NaCl" selected>3% NaCl（Na 513）</option>
+            <option value="Lactated Ringer">Lactated Ringer（Na 130, K 4）</option>
+            <option value="custom">自訂濃度</option>
+          </select>
+        </div>
+        <div class="row-2" id="calc-custom" hidden>
+          <div class="field">
+            <label for="calc-custom-na">自訂 Na <span class="unit">mEq/L</span></label>
+            <input type="number" id="calc-custom-na" value="154" step="1" inputmode="decimal">
+            <p class="hint" id="calc-custom-na-hint">0–1000</p>
+          </div>
+          <div class="field">
+            <label for="calc-custom-k">自訂 K <span class="unit">mEq/L</span></label>
+            <input type="number" id="calc-custom-k" value="0" step="1" inputmode="decimal">
+            <p class="hint" id="calc-custom-k-hint">0–200</p>
+          </div>
+        </div>
+      </div>
+    </form>
+
+    <!-- ------------------ results ------------------ -->
+    <section class="panel" id="results" aria-live="polite"></section>
+  </div>
+</main>
+
+<p class="colophon">
+  <strong>使用說明。</strong>所有判讀在瀏覽器內完成，數值不會離開這台裝置，也不會被儲存。
+  低血鈉端只接受 &lt; 135 mEq/L、高血鈉端只接受 &gt; 145 mEq/L，135–145 之間屬正常範圍故兩者皆不受理。
+  決策規則與 <code>main.py</code> 的三個 API 端點逐條對應，並以 <code>tests/test_web_parity.py</code> 對拍。
+  輸出為臨床決策輔助與教學用途，不構成醫療處方；治療決策應由具處方權之醫師依病人完整臨床情境判斷。
+</p>
+
+<script src="sodium-engine.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var E = window.SodiumEngine;
+  var L = E.LIMITS;
+  var $ = function (id) { return document.getElementById(id); };
+  var mode = "hypo";
+
+  var DEFAULTS = {
+    age: "72", gender: "female", weight: "52",
+    "hypo-na": "121", "hypo-glucose": "110", "hypo-posm": "252",
+    "hypo-una": "56", "hypo-uosm": "410",
+    "hyper-na": "154", "hyper-uosm": "150", "hyper-ddavp": "520",
+    "calc-na": "118", "calc-custom-na": "154", "calc-custom-k": "0"
+  };
+
+  // ---- 驗證 -------------------------------------------------------------
+  function describe(limit) {
+    if (limit.gt !== undefined) return "> " + limit.gt + "，≤ " + limit.le;
+    return limit.ge + "–" + limit.le;
+  }
+
+  function readNumber(id, limitKey, label, optional) {
+    var el = $(id);
+    var raw = el.value.trim();
+    el.classList.remove("invalid");
+    if (raw === "") {
+      if (optional) return { value: null };
+      return { error: label + "：必填" };
+    }
+    var n = Number(raw);
+    if (!isFinite(n)) {
+      el.classList.add("invalid");
+      return { error: label + "：請輸入數值" };
+    }
+    var lim = L[limitKey];
+    var tooLow = lim.gt !== undefined ? n <= lim.gt : n < lim.ge;
+    if (tooLow || n > lim.le) {
+      el.classList.add("invalid");
+      return { error: label + "：超出容許範圍（" + describe(lim) + "）" };
+    }
+    return { value: n };
+  }
+
+  function radioValue(name) {
+    var el = document.querySelector('input[name="' + name + '"]:checked');
+    return el ? el.value : null;
+  }
+
+  function collect(specs) {
+    var out = { values: {}, errors: [] };
+    specs.forEach(function (s) {
+      var r = readNumber(s.id, s.limit, s.label, s.optional);
+      if (r.error) out.errors.push(r.error);
+      else out.values[s.key] = r.value;
+    });
+    return out;
+  }
+
+  // ---- 渲染 -------------------------------------------------------------
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  // 「正常體液容積性低血鈉 (Euvolemic Hypotonia)」→ 中文標題 + 拉丁學名兩行
+  function splitCategory(text) {
+    var m = text.match(/^(.*?)\s*\((.+)\)\s*$/);
+    return m ? { zh: m[1], latin: m[2] } : { zh: text, latin: "" };
+  }
+
+  function num(x, digits) {
+    return Number(x).toFixed(digits === undefined ? 2 : digits);
+  }
+
+  function tile(label, value, unit, note) {
+    return '<div class="tile"><span class="eyebrow">' + esc(label) + '</span>' +
+      '<span class="value">' + esc(value) + (unit ? '<small>' + esc(unit) + '</small>' : '') + '</span>' +
+      (note ? '<span class="note">' + note + '</span>' : '') + '</div>';
+  }
+
+  function stack(title, items, pending) {
+    if (!items.length) return "";
+    return '<div class="section"><h3 class="eyebrow">' + esc(title) + '</h3>' +
+      '<ul class="stack' + (pending ? ' pending' : '') + '">' +
+      items.map(function (t) { return "<li><span>" + esc(t) + "</span></li>"; }).join("") +
+      "</ul></div>";
+  }
+
+  function alertBlock(alerts) {
+    return alerts.map(function (a) {
+      return '<div class="alert"><span class="eyebrow">校正速率安全上限</span><p>' + esc(a) + "</p></div>";
+    }).join("");
+  }
+
+  // 待辦型鑑別（「需檢測…」）與真正的鑑別診斷分開陳列
+  function partition(items) {
+    var pending = [], real = [];
+    items.forEach(function (t) {
+      (/^需(檢測|測量)/.test(t) ? pending : real).push(t);
+    });
+    return { pending: pending, real: real };
+  }
+
+  function renderVerdict(category) {
+    var c = splitCategory(category);
+    return '<div class="verdict"><span class="eyebrow">分類</span><h2>' + esc(c.zh) +
+      (c.latin ? '<span class="latin">' + esc(c.latin) + "</span>" : "") + "</h2></div>";
+  }
+
+  function renderErrors(errors) {
+    $("results").innerHTML = '<div class="errors"><h2>尚無法判讀</h2><ul>' +
+      errors.map(function (e) { return "<li>" + esc(e) + "</li>"; }).join("") + "</ul></div>";
+  }
+
+  function renderDifferentials(result) {
+    var p = partition(result.differentials);
+    return stack("鑑別診斷", p.real, false) +
+      stack("待補檢驗", p.pending, true) +
+      stack("建議處置", result.recommendations, false);
+  }
+
+  // ---- 校正速率上限量尺 --------------------------------------------------
+  // 單一數值對照一條門檻線：|ΔNa| 每公升 vs 24 小時 8 mEq/L 的安全上限
+  var CEILING = 8;
+
+  function ceilingMeter(deltaNa) {
+    var mag = Math.abs(deltaNa);
+    var pct = mag / CEILING;
+    var status = pct >= 1 ? "crit" : pct >= 0.75 ? "warn" : "ok";
+    var label = pct >= 1 ? "單袋即超過上限" : pct >= 0.75 ? "接近上限" : "在上限內";
+    var direction = deltaNa >= 0 ? "上升" : "下降";
+
+    // 刻度右端取「上限的 1.25 倍」與實際值的較大者，讓軸上每個標示都是圖上到得了的值
+    var scaleMax = Math.max(CEILING * 1.25, mag);
+    var width = (mag / scaleMax) * 100;
+    var ceilingLeft = (CEILING / scaleMax) * 100;
+    var readout = "每公升使血鈉" + direction + " " + num(mag) + " mEq/L，為 24 小時上限 " +
+      CEILING + " mEq/L 的 " + Math.round(pct * 100) + "%";
+
+    return '<div class="section"><div class="meter">' +
+      '<div class="meter-head"><h3 class="eyebrow">輸注 1 L 對照 24 小時校正上限</h3>' +
+      '<span class="status-pill status-' + status + '"><span class="dot"></span>' + esc(label) + "</span></div>" +
+      '<div class="track" role="img" aria-label="' + esc(readout) + '">' +
+      '<div class="fill is-' + status + '" style="width:' + width.toFixed(1) + '%"></div>' +
+      '<div class="ceiling" style="left:' + ceilingLeft.toFixed(1) + '%"></div></div>' +
+      '<div class="meter-scale"><span>0</span>' +
+      '<span class="at-ceiling" style="left:' + ceilingLeft.toFixed(1) + '%">上限 ' + CEILING + "</span>" +
+      "<span>" + num(scaleMax, 1) + " mEq/L</span></div>" +
+      '<p class="hint">' + esc(readout) + "。此為單次估算，未計入持續性水分或電解質流失。</p></div></div>";
+  }
+
+  // ---- 三種模式 ---------------------------------------------------------
+  function patientSpecs() {
+    return [
+      { id: "age", key: "age", limit: "age", label: "年齡" },
+      { id: "weight", key: "weight_kg", limit: "weight_kg", label: "體重" }
+    ];
+  }
+
+  function readPatient() {
+    var c = collect(patientSpecs());
+    if (c.errors.length) return { errors: c.errors };
+    return {
+      patient: {
+        age: c.values.age,
+        gender: $("gender").value,
+        weight_kg: c.values.weight_kg
+      }
+    };
+  }
+
+  function runHypo(patient) {
+    var c = collect([
+      { id: "hypo-na", key: "measured_na", limit: "hyponatremia_na", label: "血鈉" },
+      { id: "hypo-glucose", key: "glucose", limit: "glucose", label: "血糖" },
+      { id: "hypo-posm", key: "posm", limit: "posm", label: "血漿滲透壓" },
+      { id: "hypo-una", key: "u_na", limit: "u_na", label: "尿鈉", optional: true },
+      { id: "hypo-uosm", key: "u_osm", limit: "u_osm", label: "尿滲透壓", optional: true }
+    ]);
+    if (c.errors.length) return renderErrors(c.errors);
+
+    var req = c.values;
+    req.patient = patient;
+    req.volume_status = radioValue("hypo-vol");
+    req.tsh_normal = radioValue("tsh") === "1";
+    req.cortisol_normal = radioValue("cort") === "1";
+
+    var r = E.evaluateHyponatremia(req);
+    var shifted = Math.abs(r.corrected_na - r.measured_na) >= 0.05;
+
+    $("results").innerHTML = renderVerdict(r.category) +
+      '<div class="tiles">' +
+      tile("實測血鈉", num(r.measured_na, 1), "mEq/L") +
+      tile("血糖校正後", num(r.corrected_na, 1), "mEq/L",
+        shifted ? "Katz 校正 " + (r.corrected_na > r.measured_na ? "+" : "") +
+          num(r.corrected_na - r.measured_na, 1) : "血糖 ≤ 100，未校正") +
+      tile("血漿滲透壓", num(req.posm, 1), "mOsm/kg",
+        req.posm > 295 ? "高張" : req.posm >= 275 ? "等張" : "低張") +
+      "</div>" +
+      renderDifferentials(r) +
+      alertBlock(r.safety_alerts);
+  }
+
+  function runHyper(patient) {
+    var c = collect([
+      { id: "hyper-na", key: "measured_na", limit: "hypernatremia_na", label: "血鈉" },
+      { id: "hyper-uosm", key: "u_osm", limit: "u_osm", label: "尿滲透壓", optional: true },
+      { id: "hyper-ddavp", key: "ddavp_u_osm_after", limit: "ddavp_u_osm_after", label: "DDAVP 後尿滲透壓", optional: true }
+    ]);
+    if (c.errors.length) return renderErrors(c.errors);
+
+    var req = c.values;
+    req.patient = patient;
+    req.volume_status = radioValue("hyper-vol");
+
+    var r = E.evaluateHypernatremia(req);
+    var tbw = E.getTbw(patient);
+
+    $("results").innerHTML = renderVerdict(r.category) +
+      '<div class="tiles">' +
+      tile("實測血鈉", num(r.measured_na, 1), "mEq/L") +
+      tile("自由水缺乏量", num(r.free_water_deficit_l), "L", "TBW " + num(tbw) + " L × (Na/140 − 1)") +
+      tile("補水參考", num(r.free_water_deficit_l / 2), "L", "依上限 24 小時先補約一半") +
+      "</div>" +
+      renderDifferentials(r) +
+      alertBlock(r.safety_alerts);
+  }
+
+  function runCalc(patient) {
+    var specs = [{ id: "calc-na", key: "current_na", limit: "current_na", label: "當前血鈉" }];
+    var custom = $("calc-infusate").value === "custom";
+    if (custom) {
+      specs.push({ id: "calc-custom-na", key: "custom_infusate_na", limit: "custom_infusate_na", label: "自訂 Na" });
+      specs.push({ id: "calc-custom-k", key: "custom_infusate_k", limit: "custom_infusate_k", label: "自訂 K" });
+    }
+    var c = collect(specs);
+    if (c.errors.length) return renderErrors(c.errors);
+
+    var req = c.values;
+    req.patient = patient;
+    req.infusate_type = $("calc-infusate").value;
+    if (!custom) req.custom_infusate_k = 0;
+
+    var r = E.calculateAdrogueMadias(req);
+
+    $("results").innerHTML =
+      '<div class="verdict"><span class="eyebrow">輸液</span><h2>' + esc(r.infusate_name) +
+      '<span class="latin">Adrogué-Madias · Δ[Na] = ([Na]inf + [K]inf − [Na]serum) / (TBW + 1)</span></h2></div>' +
+      '<div class="tiles">' +
+      tile("每公升血鈉變化", (r.delta_na_per_liter >= 0 ? "+" : "") + num(r.delta_na_per_liter), "mEq/L") +
+      tile("輸液鈉濃度", num(r.infusate_na_meq_l, 0), "mEq/L") +
+      tile("全身體液量", num(r.tbw_liters), "L") +
+      "</div>" +
+      ceilingMeter(r.delta_na_per_liter) +
+      '<div class="section"><h3 class="eyebrow">臨床提醒</h3><ul class="stack"><li><span>' +
+      esc(r.clinical_note) + "</span></li></ul></div>";
+  }
+
+  // ---- 主迴圈 -----------------------------------------------------------
+  function updateTbw(patient) {
+    if (!patient) {
+      $("tbw-value").innerHTML = "—<small>L</small>";
+      $("tbw-basis").textContent = "—";
+      return;
+    }
+    var tbw = E.getTbw(patient);
+    var ratio = (tbw / patient.weight_kg).toFixed(2).replace(/0$/, "");
+    $("tbw-value").innerHTML = esc(tbw.toFixed(2)) + "<small>L</small>";
+    $("tbw-basis").textContent = "體重 × " + ratio + "（" +
+      (patient.gender === "male" ? "男性" : "女性") + "，" +
+      (patient.age >= 65 ? "≥ 65 歲" : "< 65 歲") + "）";
+  }
+
+  function update() {
+    var p = readPatient();
+    updateTbw(p.patient);
+    if (p.errors) return renderErrors(p.errors);
+    if (mode === "hypo") runHypo(p.patient);
+    else if (mode === "hyper") runHyper(p.patient);
+    else runCalc(p.patient);
+  }
+
+  function selectMode(next) {
+    mode = next;
+    ["hypo", "hyper", "calc"].forEach(function (m) {
+      $("tab-" + m).setAttribute("aria-selected", String(m === next));
+      $("form-" + m).hidden = m !== next;
+    });
+    update();
+  }
+
+  document.querySelectorAll(".tab").forEach(function (btn) {
+    btn.addEventListener("click", function () { selectMode(btn.dataset.mode); });
+  });
+
+  $("calc-infusate").addEventListener("change", function () {
+    $("calc-custom").hidden = this.value !== "custom";
+  });
+
+  $("reset-btn").addEventListener("click", function () {
+    Object.keys(DEFAULTS).forEach(function (id) { $(id).value = DEFAULTS[id]; });
+    $("gender").value = DEFAULTS.gender;
+    document.querySelector('input[name="hypo-vol"][value="euvolemic"]').checked = true;
+    document.querySelector('input[name="hyper-vol"][value="euvolemic"]').checked = true;
+    document.querySelector('input[name="tsh"][value="1"]').checked = true;
+    document.querySelector('input[name="cort"][value="1"]').checked = true;
+    $("calc-infusate").value = "3% NaCl";
+    $("calc-custom").hidden = true;
+    update();
+  });
+
+  $("inputs").addEventListener("input", update);
+  $("inputs").addEventListener("change", update);
+  document.querySelector(".patient").addEventListener("input", update);
+  document.querySelector(".patient").addEventListener("change", update);
+  $("inputs").addEventListener("submit", function (e) { e.preventDefault(); });
+
+  // 範圍提示直接取自引擎的邊界表，與 API 的 Field 約束同源
+  [
+    ["age-hint", "age"], ["weight-hint", "weight_kg"],
+    ["hypo-na-hint", "hyponatremia_na"], ["hypo-glucose-hint", "glucose"],
+    ["hyper-na-hint", "hypernatremia_na"], ["calc-na-hint", "current_na"],
+    ["calc-custom-na-hint", "custom_infusate_na"], ["calc-custom-k-hint", "custom_infusate_k"]
+  ].forEach(function (pair) {
+    var el = $(pair[0]);
+    if (el) el.textContent = describe(L[pair[1]]);
+  });
+  $("hypo-una-hint").textContent = "可留空；" + describe(L.u_na);
+  $("hypo-uosm-hint").textContent = "可留空；" + describe(L.u_osm);
+
+  selectMode("hypo");
+})();
+</script>
+<!-- /ARTIFACT:BODY -->
+</body>
+</html>
