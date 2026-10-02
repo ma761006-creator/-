@@ -48,9 +48,16 @@ MONO_FONT_RE = re.compile(r"mono|courier|consol|menlo|code", re.IGNORECASE)
 MARGIN_RATIO = 0.08          # 上下各 8% 視為頁首頁尾區
 HEADING_SIZE_RATIO = 1.15    # 字級 ≥ 內文 × 1.15 才算標題
 MAX_HEADING_LEVELS = 4
-MAX_HEADING_CHARS = 120
+MAX_HEADING_CHARS = 200
 MIN_IMAGE_PX = 32
 INDENT_STEP_PT = 18
+CAPTION_RE = re.compile(r"^\s*(?:table|tab\.|表)\s*[\dIVXivx]+", re.IGNORECASE)
+FIGURE_RE = re.compile(r"^\s*(?:figure|fig\.|圖)\s*\d+", re.IGNORECASE)
+COLUMN_GAP_PT = 20           # 無框線表格中，行首 x 座標相距超過此值視為不同欄
+MAX_LAYOUT_CELL_CHARS = 400
+FIGURE_DPI = 150
+MIN_FIGURE_DRAWINGS = 3
+FIGURE_GAP_PT = 30           # 圖與圖說、圖內各繪圖元件之間允許的最大垂直間距  # 有框線「表格」的儲存格超過此長度，多半是排版用的外框（如摘要欄）
 
 
 # --------------------------------------------------------------------------
@@ -62,6 +69,7 @@ class Span:
     bold: bool
     italic: bool
     mono: bool
+    font: str = ""
 
 
 @dataclass
@@ -85,6 +93,23 @@ class Line:
     def all_mono(self) -> bool:
         visible = [s for s in self.spans if s.text.strip()]
         return bool(visible) and all(s.mono for s in visible)
+
+    @property
+    def font(self) -> str:
+        """以字元數加權的主要字型。"""
+        weights: Counter = Counter()
+        for s in self.spans:
+            weights[s.font] += len(s.text.strip())
+        return weights.most_common(1)[0][0] if weights else ""
+
+    @property
+    def pure(self) -> bool:
+        """整行只用一種字型。"""
+        return len({s.font for s in self.spans if s.text.strip()}) <= 1
+
+    @property
+    def key(self) -> tuple:
+        return (self.font, self.size)
 
 
 @dataclass
@@ -123,10 +148,16 @@ def join_lines(prev: str, nxt: str) -> str:
     if not nxt:
         return prev
     if prev.endswith("-") and len(prev) >= 2 and prev[-2].isalpha() and nxt[0].islower():
+        # 複合詞（evidence-to-）的連字號要保留，一般斷字（electro-）才接回
+        last_word = prev.split()[-1]
+        if "-" in last_word[:-1]:
+            return prev + nxt
         return prev[:-1] + nxt
-    if _is_cjk(prev[-1]) or _is_cjk(nxt[0]):
-        return prev + nxt
-    return prev + " " + nxt
+    sep = "" if _is_cjk(prev[-1]) or _is_cjk(nxt[0]) else " "
+    # 粗體跨行時接成同一段粗體：「**a**」+「**b**」→「**a b**」
+    if re.search(r"(?<![*\\])\*\*$", prev) and re.match(r"\*\*(?!\*)", nxt) and not prev.endswith("***"):
+        return prev[:-2] + sep + nxt[2:]
+    return prev + sep + nxt
 
 
 def escape_md(text: str) -> str:
@@ -146,6 +177,7 @@ def _span_style(span: dict) -> Span:
         bold=bool(flags & 16) or bool(BOLD_FONT_RE.search(font)),
         italic=bool(flags & 2) or bool(ITALIC_FONT_RE.search(font)),
         mono=bool(flags & 8) or bool(MONO_FONT_RE.search(font)),
+        font=re.sub(r"^[A-Z]{6}\+", "", font),  # 去掉子集字型前綴 ABCDEF+
     )
 
 
@@ -259,6 +291,8 @@ def _extract_page(page: "pymupdf.Page", page_no: int, *, detect_tables: bool):
                 continue
             if not any(any(c for c in r) for r in rows):
                 continue
+            if max(len(c or "") for r in rows for c in r) > MAX_LAYOUT_CELL_CHARS:
+                continue
             table_rects.append(tuple(tab.bbox))
             tables.append((tab.bbox[1], tab.bbox[0], table_to_markdown(rows)))
 
@@ -270,6 +304,12 @@ def _extract_page(page: "pymupdf.Page", page_no: int, *, detect_tables: bool):
     )
     lines: List[Line] = []
     images = []
+    W, H = page.rect.width, page.rect.height
+    dirs = Counter(
+        (round(ln["dir"][0]), round(ln["dir"][1]))
+        for b in data["blocks"] for ln in b.get("lines", [])
+    )
+    main_dir = dirs.most_common(1)[0][0] if dirs else (1, 0)
     for b_idx, block in enumerate(data["blocks"]):
         if block.get("type") == 1:
             if block.get("width", 0) >= MIN_IMAGE_PX and block.get("height", 0) >= MIN_IMAGE_PX:
@@ -287,8 +327,29 @@ def _extract_page(page: "pymupdf.Page", page_no: int, *, detect_tables: bool):
             for s in ln["spans"]:
                 weights[round(s["size"] * 2) / 2] += len(s["text"].strip())
             size = weights.most_common(1)[0][0] if weights else 0.0
-            lines.append(Line(spans=spans, size=size, bbox=tuple(ln["bbox"]), page=page_no, block=b_idx))
+            bbox = tuple(ln["bbox"])
+            if main_dir != (1, 0) and (round(ln["dir"][0]), round(ln["dir"][1])) == main_dir:
+                bbox = _derotate(bbox, main_dir, W, H)
+            lines.append(Line(spans=spans, size=size, bbox=bbox, page=page_no, block=b_idx))
+    if main_dir != (1, 0):
+        # 橫印（旋轉 90°）的頁面：換到閱讀方向的座標後，依區塊重新排序
+        first = {}
+        for ln in lines:
+            first.setdefault(ln.block, (ln.bbox[1], ln.bbox[0]))
+        lines.sort(key=lambda ln: first[ln.block])
     return lines, tables, images
+
+
+def _derotate(bbox: tuple, direction: tuple, W: float, H: float) -> tuple:
+    """把旋轉文字的 bbox 轉成「文字由左至右、由上至下」的閱讀座標。"""
+    x0, y0, x1, y1 = bbox
+    if direction == (0, -1):   # 由下往上寫
+        return (H - y1, x0, H - y0, x1)
+    if direction == (0, 1):    # 由上往下寫
+        return (y0, W - x1, y1, W - x0)
+    if direction == (-1, 0):   # 上下顛倒
+        return (W - x1, H - y1, W - x0, H - y0)
+    return bbox
 
 
 def _repeated_margin_keys(page_lines: dict, page_heights: dict) -> set:
@@ -313,28 +374,263 @@ def _in_margin(line: Line, height: float) -> bool:
 
 
 # --------------------------------------------------------------------------
+# 無框線表格
+# --------------------------------------------------------------------------
+def _caption_tables(lines: List[Line], body_size: float) -> tuple:
+    """找出「TABLE n」標題下方、字級小於內文的無框線表格，回傳 (剩餘行, [(y, x0, markdown)])。
+
+    期刊表格常只靠對齊排版、沒有框線。作法：
+    - 範圍：標題之後連續、字級小於內文的行；遇到內文字級、下一個圖表標題、
+      大段空白，或橫跨多欄的行（通常是表格註腳）即結束。
+    - 欄：行首 x 座標分群。
+    - 列：第一欄裡的「儲存格起始行」開新列；懸掛縮排、同字型且緊接在下的行是同一格的續行。
+      其他欄的行依 y 座標歸入所在列，同格內多個起始行以 <br> 分隔。
+    """
+    ordered = sorted(lines, key=lambda ln: (ln.bbox[1], ln.bbox[0]))
+    taken: set = set()
+    tables = []
+    for i, cap in enumerate(ordered):
+        if id(cap) in taken or not CAPTION_RE.match(cap.text):
+            continue
+        region: List[Line] = []
+        bottom = cap.bbox[3]
+        for ln in ordered[i + 1:]:
+            if ln.bbox[1] < cap.bbox[3] - 1:
+                continue
+            if ln.size >= body_size - 0.25 or CAPTION_RE.match(ln.text) or FIGURE_RE.match(ln.text):
+                break
+            gap = ln.bbox[1] - bottom
+            if gap > ln.size * (5 if not region else 2.5):
+                break
+            region.append(ln)
+            bottom = max(bottom, ln.bbox[3])
+        table = _layout_table(region)
+        if table is None:
+            continue
+        md, used = table
+        taken.update(id(ln) for ln in used)
+        tables.append((min(ln.bbox[1] for ln in used), min(ln.bbox[0] for ln in used), md))
+    remaining = [ln for ln in lines if id(ln) not in taken]
+    return remaining, tables
+
+
+def _layout_table(region: List[Line]) -> Optional[tuple]:
+    if len(region) < 2:
+        return None
+    xs = sorted(ln.bbox[0] for ln in region)
+    starts = [xs[0]]
+    for a, b in zip(xs, xs[1:]):
+        if b - a > COLUMN_GAP_PT:
+            starts.append(b)
+    if len(starts) < 2:
+        return None
+
+    def col_of(ln: Line) -> int:
+        return max(i for i, x in enumerate(starts) if x <= ln.bbox[0] + 2)
+
+    # 橫跨到下一欄的行（表格註腳）之後就不屬於表格
+    used: List[Line] = []
+    for ln in region:
+        c = col_of(ln)
+        if c + 1 < len(starts) and ln.bbox[2] > starts[c + 1] + 2:
+            break
+        used.append(ln)
+    if len(used) < 2 or len({col_of(ln) for ln in used}) < 2:
+        return None
+
+    # 每欄標記儲存格起始行
+    cells: dict = {}  # col -> [[start_line, [lines...]], ...]
+    for c in range(len(starts)):
+        col_lines = [ln for ln in used if col_of(ln) == c]
+        indent_levels = {round(ln.bbox[0]) for ln in col_lines}
+        hanging = len(indent_levels) >= 2
+        current = None
+        out = []
+        for ln in col_lines:
+            close = current is not None and ln.bbox[1] - current[1][-1].bbox[3] < 0.8 * ln.size
+            same_font = current is not None and ln.font == current[0].font
+            if current is not None and close and same_font and (
+                ln.bbox[0] > current[0].bbox[0] + 2 if hanging else c != 0
+            ):
+                current[1].append(ln)
+            else:
+                current = [ln, [ln]]
+                out.append(current)
+        cells[c] = out
+
+    row_starts = [cell[0].bbox[1] for cell in cells.get(0, [])]
+    if not row_starts:
+        return None
+
+    def row_of(y: float) -> int:
+        idx = 0
+        for i, ry in enumerate(row_starts):
+            if ry <= y + 2:
+                idx = i
+        return idx
+
+    grid = [["" for _ in starts] for _ in row_starts]
+    for c, col_cells in cells.items():
+        for start, cell_lines in col_cells:
+            text = ""
+            for ln in cell_lines:
+                text = join_lines(text, render_spans(ln.spans))
+            text = text.replace("|", "\\|")
+            r = row_of(start.bbox[1])
+            grid[r][c] = f"{grid[r][c]}<br>{text}" if grid[r][c] else text
+    if len(grid) < 2:
+        return None
+
+    # 第一列的字型與其餘列不同（例如粗體欄名）才當表頭，否則用空白表頭
+    def fonts_of(r: int) -> list:
+        return [next((st.font for st, _ in cells[c] if row_of(st.bbox[1]) == r), None) for c in cells]
+
+    first = fonts_of(0)
+    rest = [fonts_of(r) for r in range(1, len(grid))]
+    is_header = all(first) and all(
+        all(f != other[c] for other in rest if other[c]) for c, f in enumerate(first)
+    )
+    header, body = (grid[0], grid[1:]) if is_header else ([""] * len(starts), grid)
+    md = ["| " + " | ".join(header) + " |", "|" + "|".join(" --- " for _ in header) + "|"]
+    md += ["| " + " | ".join(r) + " |" for r in body]
+    return "\n".join(md), used
+
+
+def _vector_figures(
+    page: "pymupdf.Page", lines: Sequence[Line], body_size: float, image_boxes: Sequence[tuple] = ()
+) -> List["pymupdf.Rect"]:
+    """在「FIGURE n」標題上方，由緊鄰的向量繪圖往上延伸出圖的範圍。"""
+    if page.rotation:
+        return []
+    drawings = [d["rect"] for d in page.get_drawings()]
+    figures = []
+    for cap in lines:
+        if not FIGURE_RE.match(cap.text):
+            continue
+        top, bottom = cap.bbox[1], cap.bbox[1]
+        members = []
+        for r in sorted((r for r in drawings if r.y1 <= cap.bbox[1] + 1), key=lambda r: -r.y1):
+            if r.y1 < top - FIGURE_GAP_PT:
+                break
+            members.append(r)
+            top = min(top, r.y0)
+        if len(members) < MIN_FIGURE_DRAWINGS:
+            continue
+        rect = pymupdf.Rect(members[0])
+        for r in members[1:]:
+            rect |= r
+        rect.y1 = min(rect.y1, bottom)
+        # 圖上方或圖內字級較小的標籤、緊鄰的點陣圖也算圖的一部分
+        parts = [pymupdf.Rect(ln.bbox) for ln in lines if ln is not cap and ln.size < body_size - 0.25]
+        parts += [pymupdf.Rect(b) for b in image_boxes]
+        grew = True
+        while grew:
+            grew = False
+            for b in parts:
+                if b in rect:
+                    continue
+                if b.y1 >= rect.y0 - 12 and b.y0 <= rect.y1 and b.x0 >= rect.x0 - 5 and b.x1 <= rect.x1 + 5:
+                    rect |= b
+                    grew = True
+        if rect.height >= 40 and rect.width >= 40:
+            figures.append(rect + (-4, -4, 4, 4))
+    return figures
+
+
+# --------------------------------------------------------------------------
 # 結構推論
 # --------------------------------------------------------------------------
-def _heading_levels(lines: Sequence[Line]) -> tuple:
+def _body_size(lines: Sequence[Line]) -> float:
     sizes: Counter = Counter()
     for ln in lines:
         sizes[ln.size] += len(ln.text.strip())
-    if not sizes:
-        return 0.0, {}
-    body = sizes.most_common(1)[0][0]
-    big = sorted({s for s in sizes if s >= body * HEADING_SIZE_RATIO and s - body >= 1}, reverse=True)
-    return body, {s: min(i + 1, MAX_HEADING_LEVELS) for i, s in enumerate(big)}
+    return sizes.most_common(1)[0][0] if sizes else 0.0
 
 
-def _lines_to_items(lines: Sequence[Line], body: float, levels: dict) -> List[Item]:
-    bold_level = min(len(levels) + 1, MAX_HEADING_LEVELS + 1)
+def _heading_levels(lines: Sequence[Line]) -> tuple:
+    """回傳 (內文字級, {字級: 標題層級}, {(字型, 字級): 標題層級})。
+
+    字級明顯大於內文者依大小排序為前幾級；再來是與內文同級、但用獨特字型的短行
+    （期刊常以不同字型而非粗體旗標標示小節標題，字型名稱也常被混淆成 AdvTT3e3c8cd7 之類），
+    依在文件中首次出現的順序往下排。
+    """
+    if not lines:
+        return 0.0, {}, {}
+    body = _body_size(lines)
+    big = sorted({ln.size for ln in lines if ln.size >= body * HEADING_SIZE_RATIO and ln.size - body >= 1}, reverse=True)
+    size_levels = {s: min(i + 1, MAX_HEADING_LEVELS) for i, s in enumerate(big)}
+
+    fonts: Counter = Counter()
+    for ln in lines:
+        if ln.size == body:
+            fonts[ln.font] += len(ln.text.strip())
+    body_font = fonts.most_common(1)[0][0] if fonts else ""
+
+    # 統計每種 (字型, 字級) 的「連續行」：同一區塊內相鄰且同字型字級的行視為一段
+    stats: dict = {}
+    prev: Optional[Line] = None
+    run: Optional[dict] = None
+    for idx, ln in enumerate(lines):
+        st = stats.setdefault(ln.key, {"lines": 0, "pure": 0, "mono": 0, "runs": [], "first": idx})
+        st["lines"] += 1
+        st["pure"] += ln.pure
+        st["mono"] += ln.all_mono
+        same_block = prev is not None and (prev.page, prev.block) == (ln.page, ln.block)
+        if same_block and prev.key == ln.key:
+            run["text"] = join_lines(run["text"], ln.text)
+        else:
+            # 位置合理的標題：在區塊開頭，或緊接在另一種非內文字型之後
+            placed = not same_block or prev.font != body_font
+            run = {"text": ln.text.strip(), "placed": placed}
+            st["runs"].append(run)
+        prev = ln
+
+    candidates = []
+    for key, st in stats.items():
+        font, size = key
+        if font == body_font or size in size_levels or size < body - 0.25 or st["mono"]:
+            continue
+        runs = st["runs"]
+        lengths = sorted(_display_len(r["text"]) for r in runs)
+        if (
+            st["pure"] >= 0.8 * st["lines"]
+            and lengths[len(lengths) // 2] <= 150
+            and sum(n <= 200 for n in lengths) >= 0.8 * len(runs)
+            and sum(bool(re.search(r"[.。!！]$", r["text"])) for r in runs) <= 0.3 * len(runs)
+            and sum(r["placed"] for r in runs) >= 0.8 * len(runs)
+        ):
+            candidates.append((st["first"], key))
+    base = max(size_levels.values(), default=0)
+    font_levels = {key: min(base + i + 1, 6) for i, (_, key) in enumerate(sorted(candidates))}
+    return body, size_levels, font_levels
+
+
+def _display_len(text: str) -> int:
+    """中日韓字元算兩個寬度，讓長度門檻對中英文一致。"""
+    return sum(2 if _is_cjk(ch) else 1 for ch in text)
+
+
+def _lines_to_items(lines: Sequence[Line], body: float, levels: dict, font_levels: Optional[dict] = None) -> List[Item]:
+    font_levels = font_levels or {}
+    bold_level = min(max(list(levels.values()) + list(font_levels.values()), default=0) + 1, 6)
     items: List[Item] = []
     pending_bullet: Optional[Line] = None  # 符號與文字分開排版時，符號會單獨成一行甚至一個區塊
 
-    # 依 (page, block) 分組
+    def boundary(a: Line, b: Line) -> bool:
+        if a.page != b.page:
+            return True
+        if a.block != b.block:
+            # 有些 PDF 每行自成一個區塊：緊接在下、左緣對齊、同字型字級的行仍屬同一段
+            gap = b.bbox[1] - a.bbox[3]
+            return not (a.key == b.key and abs(a.bbox[0] - b.bbox[0]) <= 2 and -0.3 * a.size <= gap < 0.5 * a.size)
+        # 與內文同一區塊的標題（Introduction 後面直接接段落）要切開
+        if (a.key in font_levels or b.key in font_levels) and a.key != b.key:
+            return True
+        return (a.size in levels or b.size in levels) and a.size != b.size
+
     groups: List[List[Line]] = []
     for ln in lines:
-        if groups and (groups[-1][-1].page, groups[-1][-1].block) == (ln.page, ln.block):
+        if groups and not boundary(groups[-1][-1], ln):
             groups[-1].append(ln)
         else:
             groups.append([ln])
@@ -354,6 +650,14 @@ def _lines_to_items(lines: Sequence[Line], body: float, levels: dict) -> List[It
             for ln in group:
                 text = join_lines(text, render_spans(ln.spans, plain=True))
             items.append(Item("heading", text, level=levels[first.size], size=first.size, page=first.page, y=first.bbox[1]))
+            continue
+
+        # 標題：與內文同級、但用獨特字型
+        if first.key in font_levels and all(ln.key == first.key for ln in group) and _display_len(plain) <= MAX_HEADING_CHARS:
+            text = ""
+            for ln in group:
+                text = join_lines(text, render_spans(ln.spans, plain=True))
+            items.append(Item("heading", text, level=font_levels[first.key], size=first.size, page=first.page, y=first.bbox[1]))
             continue
 
         # 標題：內文字級、整段粗體的短行（不以句號結尾、也不是清單項）
@@ -536,8 +840,14 @@ def convert(
                     )
                 ]
 
+        if detect_tables:
+            body_size = _body_size([ln for p in page_nos for ln in page_lines[p]])
+            for p in page_nos:
+                page_lines[p], found = _caption_tables(page_lines[p], body_size)
+                page_tables[p].extend(found)
+
         all_lines = [ln for p in page_nos for ln in page_lines[p]]
-        body, levels = _heading_levels(all_lines)
+        body, levels, font_levels = _heading_levels(all_lines)
 
         if image_dir is not None:
             image_dir = Path(image_dir)
@@ -547,8 +857,21 @@ def convert(
         for p in page_nos:
             if page_breaks:
                 items.append(Item("pagebreak", f"<!-- page {p + 1} -->", page=p))
-            text_items = _lines_to_items(page_lines[p], body, levels)
             extras = [Item("table", md, page=p, y=y) for y, _, md in page_tables[p]]
+            if image_dir is not None:
+                # 向量繪製的圖（流程圖、統計圖）存成圖片，並移除圖內被打散的文字標籤
+                figures = _vector_figures(doc[p], page_lines[p], body, [im[2]["bbox"] for im in page_images[p]])
+                for n, rect in enumerate(figures, start=1):
+                    image_dir.mkdir(parents=True, exist_ok=True)
+                    path = image_dir / f"{stem}_p{p + 1}_fig{n}.png"
+                    doc[p].get_pixmap(clip=rect, dpi=FIGURE_DPI).save(path)
+                    saved.append(path)
+                    rel = Path(os.path.relpath(path, link_base)).as_posix()
+                    extras.append(Item("image", f"![第 {p + 1} 頁圖表 {n}]({rel})", page=p, y=rect.y0))
+                fig_boxes = [tuple(r) for r in figures]
+                page_lines[p] = [ln for ln in page_lines[p] if not _inside(ln.bbox, fig_boxes)]
+                page_images[p] = [im for im in page_images[p] if not _inside(im[2]["bbox"], fig_boxes)]
+            text_items = _lines_to_items(page_lines[p], body, levels, font_levels)
             if image_dir is not None:
                 for n, (y, _, block) in enumerate(page_images[p], start=1):
                     image_dir.mkdir(parents=True, exist_ok=True)
@@ -559,7 +882,7 @@ def convert(
                     extras.append(Item("image", f"![第 {p + 1} 頁圖 {n}]({rel})", page=p, y=y))
             items.extend(_insert_by_position(text_items, extras))
 
-        items = _merge_across_breaks(items)
+        items = _merge_across_breaks(_compact_heading_levels(items))
         markdown = render_items(items)
 
         if scanned:
@@ -570,6 +893,16 @@ def convert(
             warnings.append("沒有擷取到任何內容。")
 
         return ConversionResult(markdown=markdown, page_count=doc.page_count, warnings=warnings, images=saved)
+
+
+def _compact_heading_levels(items: List[Item]) -> List[Item]:
+    """把實際用到的標題層級重新編號為 1、2、3…，避免跳級（例如只有 # 與 ####）。"""
+    used = sorted({it.level for it in items if it.kind == "heading"})
+    remap = {lvl: i + 1 for i, lvl in enumerate(used)}
+    for it in items:
+        if it.kind == "heading":
+            it.level = remap[it.level]
+    return items
 
 
 def _insert_by_position(text_items: Sequence[Item], extras: Sequence[Item]) -> List[Item]:
