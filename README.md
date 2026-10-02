@@ -26,6 +26,48 @@ uvicorn main:app --reload --port 8000
 
 互動式文件（Swagger UI）：<http://127.0.0.1:8000/docs>
 
+## PDF 轉 Markdown 工具（`pdf2md`）
+
+附帶一個獨立的 PDF → Markdown 轉換器（以 PyMuPDF 讀取版面），可把指引、衛教單張、論文等 PDF
+轉成可編輯、可放進筆記或交給 LLM 的 Markdown。
+
+```bash
+python -m pdf2md 指引.pdf                    # 輸出 指引.md（與 PDF 同資料夾）
+python -m pdf2md 指引.pdf -o out.md --images # 另存圖片到 out_images/ 並插入連結
+python -m pdf2md *.pdf -o markdown/          # 批次轉換到資料夾
+python -m pdf2md 指引.pdf -p 1-3,5 -o -      # 只轉指定頁，印到標準輸出
+```
+
+| 參數 | 說明 |
+| --- | --- |
+| `-o, --output` | 輸出檔；多個輸入時為資料夾；`-` 印到標準輸出 |
+| `-p, --pages` | 頁碼範圍，如 `1-3,5`、`4-` |
+| `--images` | 另存圖片並插入 `![](...)` 連結 |
+| `--page-breaks` | 每頁開頭插入 `<!-- page N -->` |
+| `--keep-headers` | 保留頁首、頁尾與頁碼（預設移除） |
+| `--no-tables` | 不偵測表格 |
+| `--password` | 加密 PDF 的密碼 |
+
+也可在程式中使用：
+
+```python
+from pdf2md import convert
+
+result = convert("指引.pdf", pages="1-3")
+print(result.markdown, result.warnings)
+```
+
+會還原的結構：字級推得的標題（`#`～`####`，整行粗體短句視為最低一級）、跨行與跨頁接回的段落
+（中文不補空格、英文斷字接回）、項目符號與巢狀清單、數字編號、有框線的表格、等寬字型的程式碼、
+粗體／斜體，以及在多數頁面重複出現的頁首頁尾與頁碼（會被移除）。
+
+限制：
+
+- **掃描檔**沒有文字層，無法擷取，會出現「需先做 OCR」的警告。
+- **無框線表格**不會被辨識為表格，會以一般文字輸出。
+- **多欄排版**（如期刊雙欄）依由上而下、由左而右排序，兩欄段落可能交錯。
+- 數學公式以 PDF 中的字元原樣輸出，不轉成 LaTeX。
+
 ## 端點
 
 | Method | Path | 說明 |
