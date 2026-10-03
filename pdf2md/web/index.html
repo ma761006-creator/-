@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- ARTIFACT:START -->
+<title>pdf2md</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* 版面：左側是「進料」（檔案與選項），右側是「出料」（Markdown）；窄螢幕上下堆疊。 */
+:root {
+  --bg: #f3f5f4;
+  --surface: #ffffff;
+  --sunken: #eaeeec;
+  --ink: #18211f;
+  --muted: #56645f;
+  --line: #d5dcd9;
+  --accent: #1d6b58;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcece6;
+  --warn: #8a4b00;
+  --warn-soft: #fbefdc;
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111615; --surface: #18201e; --sunken: #0d1211; --ink: #e2e9e6; --muted: #98a7a1;
+    --line: #2a3431; --accent: #5ec2a4; --accent-ink: #0b1a15; --accent-soft: #173229;
+    --warn: #f0b562; --warn-soft: #2f2412; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111615; --surface: #18201e; --sunken: #0d1211; --ink: #e2e9e6; --muted: #98a7a1;
+  --line: #2a3431; --accent: #5ec2a4; --accent-ink: #0b1a15; --accent-soft: #173229;
+  --warn: #f0b562; --warn-soft: #2f2412; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font: 15px/1.6 var(--font-body);
+  padding-inline: 16px; padding-block: 28px 40px; margin: 0;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 24px; }
+
+header { display: grid; gap: 6px; }
+header h1 {
+  font: 600 1.9rem/1.1 var(--font-mono); letter-spacing: -0.02em; margin: 0;
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+}
+header h1 .arrow { color: var(--accent); font-weight: 500; }
+header p { margin: 0; color: var(--muted); max-width: 62ch; }
+.privacy { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--accent); font-weight: 500; }
+.privacy::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+.grid { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.intake { padding: 18px; display: grid; gap: 18px; }
+
+.drop {
+  display: grid; gap: 4px; place-items: center; text-align: center;
+  border: 1.5px dashed var(--line); border-radius: 8px; padding: 26px 14px;
+  background: var(--sunken); cursor: pointer; transition: border-color .15s, background .15s;
+}
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.drop strong { font-weight: 700; }
+.drop span { font-size: 0.85rem; color: var(--muted); }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+
+.file { display: grid; gap: 2px; font-size: 0.9rem; min-width: 0; }
+.file .name { font-weight: 500; overflow-wrap: anywhere; }
+.file .meta { color: var(--muted); font-family: var(--font-mono); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+
+fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 10px; }
+legend { font-size: 0.75rem; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; padding: 0; margin-bottom: 8px; }
+label.field { display: grid; gap: 4px; font-size: 0.9rem; }
+label.check { display: flex; gap: 8px; align-items: flex-start; font-size: 0.9rem; cursor: pointer; }
+label.check input { margin-top: 0.3em; accent-color: var(--accent); }
+.hint { font-size: 0.8rem; color: var(--muted); }
+input[type="text"], input[type="password"] {
+  font: 0.95rem var(--font-mono); padding: 8px 10px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 100%;
+}
+input[type="text"]:focus, input[type="password"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+
+button {
+  font: 500 0.9rem var(--font-body); border-radius: 6px; padding: 8px 14px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); width: 100%; padding: 10px 14px; font-weight: 700; }
+
+.progress { display: grid; gap: 6px; }
+.bar { height: 6px; border-radius: 3px; background: var(--sunken); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.progress .label { font: 0.8rem var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.limits { font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 4px; }
+.limits b { color: var(--ink); font-weight: 500; }
+
+.output { display: grid; grid-template-rows: auto auto 1fr; min-width: 0; overflow: hidden; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.tabs { display: inline-flex; background: var(--sunken); border-radius: 7px; padding: 3px; gap: 2px; }
+.tabs button { border: 0; background: transparent; padding: 5px 12px; border-radius: 5px; color: var(--muted); }
+.tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12); }
+.stats { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 0.8rem var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.stats b { color: var(--ink); font-weight: 600; }
+.actions { display: flex; gap: 8px; }
+
+.status { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 14px; font-size: 0.85rem; border-bottom: 1px solid var(--line); }
+.badge { font: 600 0.7rem var(--font-mono); letter-spacing: 0.06em; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.status.warn { background: var(--warn-soft); color: var(--warn); }
+.status.warn .badge { background: transparent; color: var(--warn); border: 1px solid currentColor; }
+.status ul { margin: 0; padding-left: 1.1em; }
+
+textarea#md {
+  width: 100%; min-height: 62vh; resize: vertical; border: 0; margin: 0; display: block;
+  padding: 16px; background: var(--surface); color: var(--ink);
+  font: 0.85rem/1.65 var(--font-mono); tab-size: 2; white-space: pre-wrap;
+}
+textarea#md:focus { outline: none; }
+
+.preview { padding: 8px 22px 24px; min-height: 62vh; max-height: 75vh; overflow: auto; min-width: 0; }
+.preview :is(h1, h2, h3, h4, h5, h6) { line-height: 1.3; text-wrap: balance; margin: 1.4em 0 0.4em; }
+.preview h1 { font-size: 1.5rem; } .preview h2 { font-size: 1.25rem; } .preview h3 { font-size: 1.1rem; }
+.preview :is(h4, h5, h6) { font-size: 1rem; }
+.preview p, .preview li { max-width: 72ch; }
+.preview .tbl { overflow-x: auto; margin: 1em 0; }
+.preview table { border-collapse: collapse; font-size: 0.88rem; min-width: 480px; }
+.preview th, .preview td { border: 1px solid var(--line); padding: 6px 9px; vertical-align: top; text-align: left; }
+.preview th { background: var(--sunken); }
+.preview pre { background: var(--sunken); padding: 12px; border-radius: 6px; overflow-x: auto; }
+.preview code { font-family: var(--font-mono); font-size: 0.88em; }
+
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 6px; font-size: 0.85rem; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<!-- ARTIFACT:HEAD-END -->
+</head>
+<body>
+<!-- ARTIFACT:BODY -->
+<div class="wrap">
+  <header>
+    <h1>pdf2md <span class="arrow">PDF → .md</span></h1>
+    <p>把指引、論文、衛教單張等 PDF 轉成 Markdown：還原標題層級、段落、清單、程式碼與「TABLE n」表格，移除頁首頁尾。</p>
+    <span class="privacy">檔案只在這個瀏覽器裡處理，不會上傳；沒有檔案大小限制</span>
+  </header>
+
+  <div class="grid">
+    <section class="panel intake" aria-label="檔案與選項">
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept="application/pdf,.pdf">
+        <strong>選擇 PDF，或拖曳到這裡</strong>
+        <span>30 MB、數百頁的檔案約需數十秒</span>
+      </label>
+
+      <div class="file" id="fileInfo" hidden>
+        <span class="name" id="fileName"></span>
+        <span class="meta" id="fileMeta"></span>
+      </div>
+
+      <fieldset>
+        <legend>選項</legend>
+        <label class="field">頁碼範圍
+          <input type="text" id="pages" placeholder="全部；例如 1-3,5 或 10-" autocomplete="off" inputmode="numeric">
+        </label>
+        <label class="check"><input type="checkbox" id="stripHeaders" checked>
+          <span>移除頁首、頁尾與頁碼<br><span class="hint">多數頁面重複出現的文字才會移除</span></span></label>
+        <label class="check"><input type="checkbox" id="tables" checked>
+          <span>重組「TABLE n」標題下的無框線表格</span></label>
+        <label class="check"><input type="checkbox" id="pageBreaks">
+          <span>每頁開頭加上 <code>&lt;!-- page N --&gt;</code></span></label>
+        <label class="field" id="pwField" hidden>這份 PDF 有密碼
+          <input type="password" id="password" autocomplete="off">
+        </label>
+      </fieldset>
+
+      <button class="primary" id="run" disabled>轉換</button>
+
+      <div class="progress" id="progress" hidden>
+        <div class="bar"><i id="barFill"></i></div>
+        <span class="label" id="progressLabel"></span>
+      </div>
+
+      <div class="limits">
+        <span><b>做不到：</b>掃描檔（沒有文字層，需先 OCR）、圖片與向量圖、有框線的表格。</span>
+        <span>雙欄排版的內文可能交錯。</span>
+      </div>
+    </section>
+
+    <section class="panel output" aria-label="轉換結果">
+      <div class="toolbar">
+        <div class="tabs" role="tablist">
+          <button role="tab" id="tabMd" aria-selected="true" aria-controls="md">Markdown</button>
+          <button role="tab" id="tabPreview" aria-selected="false" aria-controls="preview">預覽</button>
+        </div>
+        <div class="stats" id="stats"></div>
+        <div class="actions">
+          <button id="copy">複製</button>
+          <button id="save" hidden disabled>下載 .md</button>
+        </div>
+      </div>
+      <div class="status" id="status"></div>
+      <textarea id="md" readonly spellcheck="false" aria-label="Markdown 內容"></textarea>
+      <div class="preview" id="preview" role="tabpanel" hidden></div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<!-- 以 script 載入 worker：pdf.js 會改在主執行緒解析，不需另開 Worker -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<script src="pdf2md-core.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    file: $("file"), drop: $("drop"), fileInfo: $("fileInfo"), fileName: $("fileName"), fileMeta: $("fileMeta"),
+    pages: $("pages"), stripHeaders: $("stripHeaders"), tables: $("tables"), pageBreaks: $("pageBreaks"),
+    pwField: $("pwField"), password: $("password"), run: $("run"), progress: $("progress"), barFill: $("barFill"),
+    progressLabel: $("progressLabel"), tabMd: $("tabMd"), tabPreview: $("tabPreview"), stats: $("stats"),
+    copy: $("copy"), save: $("save"), status: $("status"), md: $("md"), preview: $("preview"), toast: $("toast"),
+  };
+
+  // 範例輸出：開啟頁面時先展示轉換結果的樣子（ERS 2024 指引第 2–3 頁節錄）
+  const SAMPLE = {
+    name: "範例：Eur Respir J 2024 症狀處置指引（第 2–3 頁節錄）",
+    markdown: `### Methods
+
+We used ERS methodology for clinical practice guideline development [7, 8]. The task force consisted of 16 members, including four representatives of people with lived experience.
+
+### Results
+
+Recommendations for clinical practice are presented in table 1, with recommendations for research in table 2.
+
+#### Question 1: should a multicomponent service be used to reduce symptoms in people with serious respiratory illness?
+
+##### Recommendation
+
+We suggest that multicomponent services should be used to reduce symptoms in people with serious respiratory illness (conditional recommendation, very low certainty of evidence).
+
+TABLE 1 Clinical practice guideline recommendations
+
+|  |  |
+| --- | --- |
+| Question 1: Should a multicomponent service be used to reduce symptoms in people with serious respiratory illness? | We suggest that multicomponent services should be used to reduce symptoms in people with serious respiratory illness (conditional recommendation, very low certainty of evidence) |
+| Question 2: Should graded exercise therapy be used to reduce fatigue in people with serious respiratory illness? | We suggest that graded exercise therapy be used to reduce fatigue (conditional recommendation, low certainty of evidence) |
+`,
+    pageCount: 2,
+  };
+
+  let current = null;     // { name, markdown, pageCount, warnings, real }
+  let pdfBytes = null;    // 目前選取的檔案內容
+  let pdfName = "";
+  let running = false;
+  let downloads = null;
+
+  // ---------- 顯示 ----------
+  function stats(md) {
+    const lines = md.split("\n");
+    return {
+      headings: lines.filter((l) => /^#{1,6} /.test(l)).length,
+      tables: (md.match(/^\| --- \|/gm) || []).length,
+      chars: md.length,
+    };
+  }
+
+  function render() {
+    const r = current;
+    els.md.value = r.markdown;
+    const s = stats(r.markdown);
+    els.stats.innerHTML = "";
+    for (const [label, value] of [["頁", r.pageCount], ["標題", s.headings], ["表格", s.tables], ["字元", s.chars.toLocaleString()]]) {
+      const span = document.createElement("span");
+      const b = document.createElement("b");
+      b.textContent = value;
+      span.append(b, " " + label);
+      els.stats.append(span);
+    }
+    els.status.innerHTML = "";
+    els.status.classList.toggle("warn", !!(r.warnings && r.warnings.length));
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = r.real ? (r.warnings && r.warnings.length ? "注意" : "完成") : "範例";
+    const text = document.createElement("span");
+    text.textContent = r.real ? r.name : r.name + "。選擇你的 PDF 後，這裡會換成你的內容。";
+    els.status.append(badge, text);
+    if (r.warnings && r.warnings.length) {
+      const ul = document.createElement("ul");
+      for (const w of r.warnings) { const li = document.createElement("li"); li.textContent = w; ul.append(li); }
+      els.status.append(ul);
+    }
+    els.save.disabled = !r.real;
+    if (!els.preview.hidden) renderPreview();
+  }
+
+  function renderPreview() {
+    const html = DOMPurify.sanitize(marked.parse(current.markdown, { gfm: true }));
+    els.preview.innerHTML = html;
+    for (const t of els.preview.querySelectorAll("table")) {
+      const box = document.createElement("div");
+      box.className = "tbl";
+      t.replaceWith(box);
+      box.append(t);
+    }
+  }
+
+  function selectTab(preview) {
+    els.tabMd.setAttribute("aria-selected", String(!preview));
+    els.tabPreview.setAttribute("aria-selected", String(preview));
+    els.md.hidden = preview;
+    els.preview.hidden = !preview;
+    if (preview) renderPreview();
+  }
+  els.tabMd.addEventListener("click", () => selectTab(false));
+  els.tabPreview.addEventListener("click", () => selectTab(true));
+
+  let toastTimer;
+  function toast(msg) {
+    els.toast.textContent = msg;
+    els.toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (els.toast.hidden = true), 2200);
+  }
+
+  function showError(msg) {
+    els.status.innerHTML = "";
+    els.status.classList.add("warn");
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = "無法轉換";
+    const text = document.createElement("span");
+    text.textContent = msg;
+    els.status.append(badge, text);
+  }
+
+  const formatSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+
+  // ---------- 檔案 ----------
+  async function takeFile(file) {
+    if (!file) return;
+    if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
+      showError(`「${file.name}」不是 PDF。請選擇副檔名為 .pdf 的檔案。`);
+      return;
+    }
+    pdfName = file.name;
+    pdfBytes = new Uint8Array(await file.arrayBuffer());
+    els.fileInfo.hidden = false;
+    els.fileName.textContent = file.name;
+    els.fileMeta.textContent = formatSize(file.size);
+    els.password.value = "";
+    els.pwField.hidden = true;
+    els.run.disabled = false;
+    run();
+  }
+  els.file.addEventListener("change", () => takeFile(els.file.files[0]));
+  for (const ev of ["dragenter", "dragover"]) {
+    els.drop.addEventListener(ev, (e) => { e.preventDefault(); els.drop.classList.add("over"); });
+  }
+  for (const ev of ["dragleave", "drop"]) {
+    els.drop.addEventListener(ev, (e) => { e.preventDefault(); els.drop.classList.remove("over"); });
+  }
+  els.drop.addEventListener("drop", (e) => takeFile(e.dataTransfer.files[0]));
+
+  // CMap：未內嵌的中日韓字型才需要。先找與頁面一起發佈的 cmaps.js（Claude 上的版本），
+  // 沒有時（直接用瀏覽器開啟本檔）改從 CDN 逐檔下載。
+  const CMAP_CDN = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/";
+  let cmapBundle = null;
+  function loadCMapBundle() {
+    if (!cmapBundle) {
+      cmapBundle = new Promise((resolve) => {
+        const s = document.createElement("script");
+        s.src = "cmaps.js";
+        s.onload = () => resolve(window.PDF2MD_CMAPS || null);
+        s.onerror = () => resolve(null);
+        document.head.append(s);
+      });
+    }
+    return cmapBundle;
+  }
+  class CMapReader {
+    async fetch({ name }) {
+      const bundle = await loadCMapBundle();
+      let bytes;
+      if (bundle && bundle[name]) {
+        const bin = atob(bundle[name]);
+        bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      } else {
+        const res = await fetch(CMAP_CDN + name + ".bcmap");
+        if (!res.ok) throw new Error(`無法載入字型對應表 ${name}`);
+        bytes = new Uint8Array(await res.arrayBuffer());
+      }
+      return { cMapData: bytes, compressionType: pdfjsLib.CMapCompressionType.BINARY };
+    }
+  }
+
+  // ---------- 轉換 ----------
+  async function run() {
+    if (!pdfBytes || running) return;
+    running = true;
+    els.run.disabled = true;
+    els.run.textContent = "轉換中…";
+    els.progress.hidden = false;
+    els.barFill.style.width = "0%";
+    els.progressLabel.textContent = "讀取檔案…";
+    try {
+      const result = await PDF2MD.convert(
+        pdfjsLib,
+        pdfBytes.slice(), // pdf.js 會轉移緩衝區；保留原檔以便改選項後重轉
+        {
+          pages: els.pages.value,
+          keepHeaders: !els.stripHeaders.checked,
+          detectTables: els.tables.checked,
+          pageBreaks: els.pageBreaks.checked,
+          password: els.password.value || undefined,
+          CMapReaderFactory: CMapReader,
+        },
+        ({ done, total }) => {
+          els.barFill.style.width = `${(done / total) * 100}%`;
+          els.progressLabel.textContent = `第 ${done} / ${total} 頁`;
+        }
+      );
+      current = { name: pdfName, ...result, real: true };
+      els.fileMeta.textContent = `${formatSize(pdfBytes.length)} · ${result.pageCount} 頁`;
+      render();
+      els.progressLabel.textContent = "完成";
+    } catch (e) {
+      els.progress.hidden = true;
+      if (e && e.name === "PasswordException") {
+        els.pwField.hidden = false;
+        els.password.focus();
+        showError(els.password.value ? "密碼不正確，請再輸入一次後按「轉換」。" : "這份 PDF 有密碼保護。輸入密碼後按「轉換」。");
+      } else if (e && e.name === "InvalidPDFException") {
+        showError("檔案無法解析，可能已損毀或不是 PDF。");
+      } else {
+        showError((e && e.message) || String(e));
+      }
+    } finally {
+      running = false;
+      els.run.disabled = false;
+      els.run.textContent = "轉換";
+    }
+  }
+  els.run.addEventListener("click", run);
+  els.pages.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+  els.password.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+
+  // ---------- 複製與下載 ----------
+  els.copy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(current.markdown);
+      toast("已複製 Markdown");
+    } catch (e) {
+      selectTab(false);
+      els.md.focus();
+      els.md.select();
+      toast("已全選，請按 Ctrl+C（⌘C）複製");
+    }
+  });
+
+  const mdName = () => (pdfName || "document.pdf").replace(/\.pdf$/i, "") + ".md";
+  els.save.addEventListener("click", async () => {
+    if (!current || !current.real) return;
+    if (downloads) {
+      try {
+        await downloads.save({ filename: mdName(), data: new Blob([current.markdown], { type: "text/markdown" }) });
+        toast("已下載 " + mdName());
+      } catch (e) {
+        if (e && e.code === "declined") return;
+        if (e && e.code === "rate_limited") toast("另一個下載確認還開著，請先處理它");
+        else toast("這裡無法下載，請改用「複製」");
+      }
+      return;
+    }
+    // 頁面直接以瀏覽器開啟（不在 Claude 裡）時，用一般下載連結
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([current.markdown], { type: "text/markdown" }));
+    a.download = mdName();
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  (async () => {
+    if (window.claude && typeof window.claude.use === "function") {
+      try { downloads = await window.claude.use("downloads"); } catch (e) { downloads = null; }
+      els.save.hidden = !downloads;
+    } else {
+      els.save.hidden = false; // 獨立開啟：一般下載連結可用
+    }
+  })();
+
+  current = { ...SAMPLE, warnings: [], real: false };
+  render();
+})();
+</script>
+<!-- ARTIFACT:END -->
+</body>
+</html>
