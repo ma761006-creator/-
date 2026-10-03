@@ -1,0 +1,8 @@
+{
+  "name": "pdf2md-web",
+  "private": true,
+  "description": "pdf2md 網頁版核心的 Node 測試環境（瀏覽器版從 cdnjs 載入同版本 pdf.js）",
+  "devDependencies": {
+    "pdfjs-dist": "3.11.174"
+  }
+}

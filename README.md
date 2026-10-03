@@ -69,6 +69,17 @@ print(result.markdown, result.warnings)
   圖內散落的文字標籤不再混進內文。
 - 等寬字型的程式碼、粗體／斜體；重複出現的頁首頁尾與頁碼會被移除。
 
+### 網頁版（不需安裝、檔案不上傳）
+
+`pdf2md/web/index.html` 用 pdf.js 在瀏覽器裡轉檔，PDF 不會離開該裝置，也沒有檔案大小限制；
+直接用瀏覽器開啟即可。轉換規則由 `pdf2md/web/pdf2md-core.js` 移植自 Python 版，
+`tests/test_pdf2md_web.py` 以同一批 PDF 對拍兩邊的標題、段落、清單與無框線表格
+（需要 node：`npm install --prefix pdf2md/web`，缺少時該檔自動跳過）。
+網頁版不做有框線表格與圖片擷取。
+
+在 Claude 上發佈用的檔案由 `node pdf2md/web/build_artifact.js` 產生到 `pdf2md/web/dist/`
+（CMap 會打包成 `cmaps.js`，因為發佈平台不提供二進位檔）。
+
 限制：
 
 - **掃描檔**沒有文字層，無法擷取，會出現「需先做 OCR」的警告。
