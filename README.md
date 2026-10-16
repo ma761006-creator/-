@@ -1,5 +1,7 @@
 # Clinical Sodium Differential & Management API
 
+> 另含 **LINE 私人小助手**，見 [`line_assistant/README.md`](line_assistant/README.md)。
+
 以 FastAPI + Pydantic v2 建構的血鈉（Sodium）鑑別診斷與臨床計算 RESTful API。
 
 涵蓋：
